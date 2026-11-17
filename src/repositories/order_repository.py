@@ -38,7 +38,7 @@ class OrderRepository:
 
     def add_order(self, order):
         self.db.add(order)
-        self.db.flush()
+        self.db.flush() # Send SQL statements to database, to get the database generated order_id (used for outbox_event)
         return order
 
     def add_order_items(self, items):

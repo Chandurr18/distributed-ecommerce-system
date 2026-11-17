@@ -15,6 +15,8 @@ from src.models.payment_model import Payment
 from src.models.refresh_token_model import RefreshToken
 from src.models.idempotency_model import IdempotencyRecord
 from src.models.outbox_event_model import OutboxEvent
+from src.models.processed_event_model import ProcessedEvent
+from src.models.notification_model import Notification
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

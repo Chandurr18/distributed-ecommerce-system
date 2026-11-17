@@ -1,0 +1,385 @@
+DB Tables(models):
+-> users
+-> refresh_tokens
+-> products
+-> inventory
+-> orders
+-> order_items
+-> payments
+-> idempotency_records
+-> outbox_events
+
+--------------------------------------------------------------------------------------------------------------------------
+Alembic package:
+
+- For easy db migrations, table creations and updates etc in future, we'll be using "Alembic" package
+
+- Alembic tracks database schema changes through versioned migration files.
+
+- installation: pip install alembic
+
+- initialize alembic : This creates the configuration file and migration folder.
+```
+alembic init migrations
+```
+
+- configure to connect alembic with our SQLAlchemy models
+    - open migrations/env.py
+    - change target_metadata = Base.metadata (Base is from src.config.db)
+
+- change db URL in alembic.ini
+    - sqlalchemy.url = postgresql+psycopg2://postgres:postgres%%40123@localhost:5432/ecommerce-db
+
+- after every change in db models:
+    - first we'll add that model in migrations/env.py 
+    - then, we generate migration file
+    - then, apply the migration to our PostgresSQL db
+```
+alembic revision --autogenerate -m "initial migration"
+
+alembic upgrade head
+```
+
+--------------------------------------------------------------------------------------------------------------------------
+Schemas vs Models:
+
+- Models
+    - How data is stored in the database.
+    - Models define your database tables using SQLAlchemy.
+    - For example, your Product model represents a product table in database.
+- Schemas
+    - How data enters and leaves your API.
+    - Schemas define the structure of API requests and responses using Pydantic.
+    - It tells FastAPI:
+        - What information a client must send.
+        - What data types are accepted.
+        - What validation rules apply.
+
+--------------------------------------------------------------------------------------------------------------------------
+
+Models takeway:
+
+- import uuid       : Generates unique IDs.
+- Base	            : Connects this model to SQLAlchemy's metadata.
+- Column	        : Defines a database column.
+- String	        : Stores text.
+- DateTime	        : Stores date and time.
+- UUID	            : PostgreSQL UUID data type.
+- func	            : SQLAlchemy helper to call database functions.
+- func.now()        : Calls PostgreSQL's current timestamp function.
+- server_default    : Tells PostgreSQL to automatically generate the value when a new row is inserted.
+- unique=True       : No duplicate content.
+- nullable=False    : Cannot be empty (NULL).
+- index=True        : Creates an index to speed up searches.
+- timezone=True     : Supports timezone-aware timestamps.
+- __tablename__ = "inventory" : table name
+-  __table_args__ = (         
+    : arguments or constraints for table
+        CheckConstraint(
+            "quantity >= 0",
+            name="ck_inventory_quantity_nonnegative",
+        ),
+    )
+
+
+--------------------------------------------------------------------------------------------------------------------------
+Schemas takeway:
+- model_config = ConfigDict(from_attributes=True)
+    - This is a Pydantic configuration that allows Pydantic to create a schema response directly from an object's attributes.
+    - Normally, Pydantic expects dictionary-like data:
+        product_data = {    "id": "123",    "name": "Laptop",    "price": 75000}
+    - But SQLAlchemy returns a Python object, not necessarily a dictionary.
+    - For example:
+        product = Product(    id="123",    name="Laptop",    price=75000)
+    - With: model_config = ConfigDict(from_attributes=True)
+        Pydantic can read product.id, product.name, and product.price directly and convert them into a ProductResponse.
+    - This is especially useful when returning database records from FastAPI.
+
+--------------------------------------------------------------------------------------------------------------------------
+
+DB takeway:
+
+1. self.db.add(new_product)     : It adds the object to the current database session or transaction.
+2. self.db.commit()             : This permanently saves the pending changes to PostgreSQL by committing the current transaction.
+3. self.db.refresh(new_product) : This fetches the latest values of the product from PostgreSQL and updates the Python object.
+    - Imagine your database automatically generates:
+        - id (UUID)
+        - created_at (current timestamp)
+    - After committing, refresh() retrieves those database-generated values.
+4. self.db.query(Product).filter(Product.id == product_id).first()
+    - query(Product) → Tells the database that you want to fetch data from the Product table.
+5. self.db.query(Product).offset(skip).limit(limit).all()
+    - skip: Number of products to skip.
+    - limit: Maximum number of products to return.
+    - .offset(skip): Skips records.
+    - .limit(limit): Restricts the result count.
+    - .all(): Returns all matching records as a list.
+6. self.db.query(Product).filter(Product.is_active.is_(True)).filter(Product.name.ilike(f"%{search}%"))
+    - ilike() : It performs case-insensitive searches.
+7. query.order_by(sort_column.asc())
+8. statement = (
+            insert(Inventory)
+            .values(
+                product_id=product_id,
+                quantity=quantity,
+            )
+            .on_conflict_do_update(
+                index_elements=[Inventory.product_id],
+                set_={
+                    "quantity": Inventory.quantity + quantity,
+                    "updated_at": func.now(),
+                },
+            )
+            .returning(Inventory.id)
+            )
+    - on_conflict_do_update() — UPSERT : If the INSERT causes a conflict, UPDATE the existing row instead of throwing an error.
+        - index_elements → Check for conflict on product_id (must have a unique constraint/index).
+    - on_conflict_do_nothing() — Conflict → Skip INSERT
+9. with_for_update() — Row-level locking
+    - It tells the database to lock the selected rows so other transactions cannot modify or lock them until the current transaction finishes.
+    - with_for_update()	Lock selected rows
+    - with_for_update(nowait=True)	Don't wait; throw an error if locked
+    - with_for_update(skip_locked=True)	Skip rows already locked
+    - with_for_update(read=True)	Request a shared lock (database-dependent)
+    - with_for_update(of=Model)	Specify which table's rows to lock
+
+10. SELECT FOR UPDATE SKIP LOCKED ---- kafka : Prevent multiple workers from processing the same event
+    - FOR UPDATE: Locks the selected row.
+    - SKIP LOCKED: If another transaction already locked that row, skip it instead of waiting.
+Note:
+- if commit() fails, SQLAlchemy requires a rollback() before that session can be used for further database operations.
+
+--------------------------------------------------------------------------------------------------------------------------
+
+Endpoints:
+
+1. GET /health
+    - Health check
+2. POST /products
+    - Create product
+    - body: {
+        "name": "Laptop",
+        "description": "Development laptop",
+        "price": 75000.00
+      }
+3. GET /products/{product_id}
+    - Retrieves a specific product.
+4. GET /products?skip=0&limit=10&search=laptop&min_price=100&max_price=200&sort_by=created_at&sort_order=desc 
+    - Retrieve all products with skip and limit (pagination), search and filter functions
+5. PUT /products/{product_id} 
+    - Update Product
+    - body : {
+        "name": "Updated Laptop",
+        "description": "Updated development laptop",
+        "price": 85000.00,
+        "is_active": true
+      }
+6. DELETE /api/v1/products/{id} 
+    - Soft Deletes the product by ID
+7. GET /api/v1/{product_id}
+    - Get Inventory
+8. POST /api/v1/{product_id}/stock  
+    - Add Stock
+    - body : {
+        "quantity": 1
+        }
+9. POST /api/v1/{product_id}/deduct
+    - Deduct Stock
+    - body : {
+        "quantity": 1
+        }
+10. POST /api/v1/orders	
+    - Create order
+    - Header : Idempotency-Key
+    - body : {
+        "user_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        "items": [
+            {
+            "product_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "quantity": 1
+            }
+        ]
+        }
+11. GET	/api/v1/orders	
+    - List user orders
+12. GET	/api/v1/orders/{order_id}	
+    - Get order
+13. POST /api/v1/orders/{order_id}/cancel?user_id=asdfaewadsvaef	
+    - Cancel order
+
+
+
+--------------------------------------------------------------------------------------------------------------------------
+Idempotency Key:
+- Idempotency means: Sending the same request multiple times should produce the same result as sending it once.
+- Imagine this:
+    1. A customer clicks Place Order.
+    2. Your backend creates an order and deducts 2 units from inventory.
+    3. The internet connection drops before the customer receives the response.
+    4. The customer clicks Place Order again.
+- The frontend sends a unique key with the request
+- Backend stores that key when processing the order.
+- When the same request arrives again, the backend checks the key:
+    - New key: Process the order normally.
+    - Existing key: Return the previously stored response instead of creating another order.
+- idempotency_model
+    - idempotency_key   : Identifies the request.
+    - request_hash      : Helps verify that the request content hasn't changed.
+    - response_status   : Stores the original HTTP status.
+    - response_body     : Stores the original response.
+    - user_id           : so idempotency keys are scoped to the caller.
+- This allows your backend to recognize repeated requests and return the original result.
+
+- Same key + same hash: It's a duplicate request. Return the previously stored response.
+- Same key + different hash: Reject the request with HTTP 409 Conflict.
+
+- Imagine these four operations happen inside one database transaction:
+    A. Create order
+    B. Deduct inventory
+    C. Save idempotency response
+    D. Transaction commits
+
+    - A, B and C should all roll back.
+    - This is the power of a database transaction: all-or-nothing execution. (Atomicity)
+- ACID properties of database transactions.
+    - Atomicity — All operations succeed or none do.
+    - Consistency — Data remains valid.
+    - Isolation — Concurrent transactions don't interfere incorrectly.
+    - Durability — Committed changes survive crashes.
+
+--------------------------------------------------------------------------------------------------------------------------
+Docker:
+- Docker runs containers; Docker Compose manages and runs multiple related containers using one configuration file.
+- commands
+    - docker --version
+    - docker compose version
+    - docker info
+    - docker ps : verify container
+
+
+- Docker:	
+    - Runs individual containers	
+    - Uses ```docker run```	
+    - Configured through CLI commands	
+    - Best for managing single containers	
+    - eg: docker run -d mysql
+
+- Docker Compose:
+    - Runs multiple containers together
+    - Uses ```docker compose up```
+    - Configured using ```docker-compose.yml```
+    - Best for managing multi-container applications
+    - eg: docker compose up -d
+
+- For our project, we first created docker-compose.yml, including one container (ecommerce-kafka), to run one kafka broker
+--------------------------------------------------------------------------------------------------------------------------
+
+Kafka:
+- event-driven architecture
+- Apache Kafka is an open-source, distributed event-streaming platform used to handle large amounts of real-time data between applications
+- Kafka allows one application to send data and another application to receive it without directly connecting to each other.
+
+- Kafka cluster: A Kafka cluster is a group of Kafka brokers working together.
+- Broker: Kafka server that stores partitions.
+- Topic: A topic is a logical category or channel where Kafka stores messages. e.g orders
+- Partitions: Splits a topic into smaller parts in an ordered sequence for parallel processing.
+- Offset: Position of a message within a partition.
+- Producer: Sends messages to Kafka (events).
+- Consumer: Reads messages from Kafka
+- Consumer group: Multiple consumers share the work.
+- Replication: Keeps copies of partitions for fault tolerance.
+
+- Package Installation in python
+    - pip install aiokafka
+    - aiokafka: for asynchronous models, supports async / await (unlike kafka-python)
+
+- kafka setup in out project:
+    - Kafka runs inside Docker.
+    - KRaft eliminates ZooKeeper.
+    - Port 9092 allows your FastAPI application to connect.
+    - Persistent volume preserves Kafka data when the container restarts.
+
+- In our project:
+    - Order Service creates orders.
+    - Outbox Publisher publishes order events to Kafka.
+    - Other services can consume those events.
+    - For example, when an order is created:
+        - Inventory might need to update its records.
+        - Notification might need to send an email.
+        - Analytics might need to record the order.
+
+- start kafka broker
+    - ```docker compose up -d```
+
+    - What this command does:
+        - Downloads the Kafka Docker image if needed.
+        - Creates the Kafka container.
+        - Starts Kafka in the background.
+        - Creates persistent storage for Kafka data.
+
+- verify kafka is ready and checks whether the Kafka broker is responding to client requests.
+    - ```docker exec ecommerce-kafka /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092```
+
+- create ```order-events``` topic
+    - ```docker exec ecommerce-kafka /opt/kafka/bin/kafka-topics.sh --create --topic order-events --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1```
+
+    - order-events: Topic name.
+    - partitions 1: One partition for now.
+    - replication-factor 1: One replica because we have one broker.
+
+- verify created topics list
+    - ```docker exec ecommerce-kafka /opt/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092```
+
+- verify topic configuration:
+    - ```docker exec ecommerce-kafka /opt/kafka/bin/kafka-topics.sh --describe --topic order-events --bootstrap-server localhost:9092```
+
+- Test kafka independetly:
+    - First run 
+        docker exec -it ecommerce-kafka /opt/kafka/bin/kafka-console-producer.sh --topic order-events --bootstrap-server localhost:9092
+    - Then, enter
+        {"event_type":"order.created","order_id":"101"}
+    - Then, consume message/event
+        docker exec -it ecommerce-kafka /opt/kafka/bin/kafka-console-consumer.sh --topic order-events --from-beginning --bootstrap-server localhost:9092
+
+
+
+--------------------------------------------------------------------------------------------------------------------------
+
+Outbox Publisher:
+
+- We now have three responsibilities separated:
+    - OrderRepository: Saves outbox events.
+    - OutboxRepository: Retrieves and updates events.
+    - OutboxPublisher: Publishes events to Kafka.
+
+- created a background polling worker (outbox_worker.py, publish_pending_events())
+
+- concerns:
+    - Duplicate event delivery.
+        - Imagine this sequence:
+            1. The Outbox Worker sends an event to Kafka.
+            2. Kafka successfully stores the event.
+            3. PostgreSQL fails to commit status = 'published'.
+            4. The event remains pending.
+            5. The worker retries and sends the same event again.
+        - solution:
+            - Idempotent Consumer or Inbox Pattern.
+            - Create a separate table called processed_events to record event IDs that consumers have successfully processed.
+    - Multiple workers processing the same event.
+        - Solution: SELECT FOR UPDATE SKIP LOCKED (check db section for reference)
+    - Retry tracking and failed events.
+        - The processed-event record and the consumer's business operation must commit in the same database transaction.
+        - For example:
+            1. Claim the event.
+            2. If already processed, skip it.
+            3. Perform the business operation.
+            4. Commit both changes together.
+            5. If anything fails, roll back both.
+        - This prevents an event from being marked processed when its business operation actually failed.
+        - Otherwise, a retry could be skipped even though the business operation never completed.
+        - solution: inside event_consumer_service, handle all_or_none transaction and rollback
+    - Graceful worker shutdown.
+    - Consumer-side idempotency.
+        - This is essentially the Inbox Pattern from concern 1.
+        - Our consumer checks the event ID before processing it. A previously processed event is skipped.
+Important: If Kafka publishing succeeds but the database commit fails, the event may be published again during a retry. We'll address duplicate delivery and concurrent publishers later.
