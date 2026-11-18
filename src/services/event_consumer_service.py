@@ -32,7 +32,7 @@ class OrderEventConsumer:
 
     async def start(self):
         await self.consumer.start()
-        logger.info("Order event consumer started")
+        logger.debug("Order event consumer started")
 
     async def consume(self):
         try:
@@ -65,9 +65,9 @@ class OrderEventConsumer:
 
             if is_new:
                 self.handle_event(event_type, event, db)
-                logger.info("Processed event: %s", event_id)
+                logger.debug("Processed event: %s", event_id)
             else:
-                logger.info("Duplicate event skipped: %s", event_id)
+                logger.debug("Duplicate event skipped: %s", event_id)
 
             # Commit Inbox record and business changes together.
             db.commit()
@@ -103,7 +103,7 @@ class OrderEventConsumer:
             order_id=order_id,
         )
 
-        logger.info(
+        logger.debug(
             "Order confirmation notification created for order: %s",
             order_id,
         )
@@ -111,4 +111,4 @@ class OrderEventConsumer:
 
     async def stop(self):
         await self.consumer.stop()
-        logger.info("Order event consumer stopped")
+        logger.debug("Order event consumer stopped")

@@ -1,25 +1,33 @@
-from fastapi import APIRouter, status, Depends, HTTPException, Query
+
+from fastapi import APIRouter, status, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from uuid import UUID
 from decimal import Decimal
 from typing import Literal
 
 from src.dependencies.database import get_db
-from src.schemas.product_schema import ProductResponse, ProductCreate, ProductUpdate, ProductListResponse
+from src.schemas.product_schema import (
+    ProductResponse,
+    ProductCreate,
+    ProductUpdate,
+    ProductListResponse,
+)
 from src.services.product_service import ProductService
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
+
 @router.post(
     "",
-    response_model = ProductResponse,
-    status_code = status.HTTP_201_CREATED,
+    response_model=ProductResponse,
+    status_code=status.HTTP_201_CREATED,
 )
 def create_product(
     product_data: ProductCreate,
-    db: Session = Depends(get_db)
+    request: Request,
+    db: Session = Depends(get_db),
 ):
-    product_service = ProductService(db)
+    product_service = ProductService(db, request.app.state.redis)
     return product_service.create_product(product_data)
 
 
@@ -29,12 +37,13 @@ def create_product(
 )
 def get_product(
     product_id: UUID,
-    db: Session = Depends(get_db)
+    request: Request,
+    db: Session = Depends(get_db),
 ):
-    product_service = ProductService(db)
+    product_service = ProductService(db, request.app.state.redis)
     product = product_service.get_product_by_id(product_id)
 
-    if(product is None):
+    if product is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Product not found",
@@ -42,11 +51,13 @@ def get_product(
 
     return product
 
+
 @router.get(
     "",
     response_model=ProductListResponse,
 )
 def get_all_products(
+    request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     search: str | None = None,
@@ -66,7 +77,7 @@ def get_all_products(
             detail="min_price cannot be greater than max_price",
         )
 
-    product_service = ProductService(db)
+    product_service = ProductService(db, request.app.state.redis)
 
     return product_service.get_all_products(
         skip=skip,
@@ -78,6 +89,7 @@ def get_all_products(
         sort_order=sort_order,
     )
 
+
 @router.put(
     "/{product_id}",
     response_model=ProductResponse,
@@ -85,9 +97,10 @@ def get_all_products(
 def update_product(
     product_id: UUID,
     product_data: ProductUpdate,
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    product_service = ProductService(db)
+    product_service = ProductService(db, request.app.state.redis)
 
     product = product_service.update_product(
         product_id,
@@ -109,9 +122,10 @@ def update_product(
 )
 def delete_product(
     product_id: UUID,
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    product_service = ProductService(db)
+    product_service = ProductService(db, request.app.state.redis)
 
     deleted = product_service.delete_product(product_id)
 

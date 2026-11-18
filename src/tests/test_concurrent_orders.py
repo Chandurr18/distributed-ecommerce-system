@@ -43,6 +43,6 @@ with ThreadPoolExecutor(max_workers=2) as executor:
     results = list(executor.map(lambda _: send_order(), range(2)))
 
 for index, (status, body) in enumerate(results, start=1):
-    print(f"\nRequest {index}")
-    print("Status:", status)
-    print("Response:", body)
+    logger.debug(f"\nRequest {index}")
+    logger.debug("Status:", status)
+    logger.debug("Response:", body)

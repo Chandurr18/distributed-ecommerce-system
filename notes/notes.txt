@@ -1,3 +1,12 @@
+Progress:
+Day 1	PostgreSQL, SQLAlchemy, Alembic, database models
+Day 2	Product, Inventory, Order modules, idempotency, transactions
+Day 3	Transactional Outbox, Kafka producer, background publisher
+Day 4	Kafka consumer, Inbox Pattern, duplicate detection, notifications
+
+
+
+
 DB Tables(models):
 -> users
 -> refresh_tokens
@@ -383,3 +392,92 @@ Outbox Publisher:
         - This is essentially the Inbox Pattern from concern 1.
         - Our consumer checks the event ID before processing it. A previously processed event is skipped.
 Important: If Kafka publishing succeeds but the database commit fails, the event may be published again during a retry. We'll address duplicate delivery and concurrent publishers later.
+
+
+--------------------------------------------------------------------------------------------------------------------------
+
+Cache:
+
+Endpoint	                    Cache decision
+GET /products/{product_id}	         Cache
+GET /products	                     Cache
+POST /products	                   No caching
+PUT /products/{product_id}	     Invalidate cache
+DELETE /products/{product_id}	 Invalidate cache
+
+
+--------------------------------------------------------------------------------------------------------------------------
+
+Redis:
+
+- Redis is an in-memory data store.
+- In simple terms:
+    - PostgreSQL stores our permanent business data.
+    - Redis stores data in memory for very fast access.
+    - Our application can retrieve frequently requested data from Redis instead of querying PostgreSQL every time.
+    Redis primarily works with key-value data.
+
+- Important: Redis does not automatically make our application scalable. We still need to design caching correctly.
+
+- Redis gives us speed, but introduces new complexity.
+
+-     Benefit	                                     Trade-off
+    Very fast reads	                       Additional infrastructure
+    Less database load	                   Cache invalidation complexity
+    Handles high request volume	        Memory is limited and costs money
+    TTL expiration	                         Data can become stale
+    Shared cache across API instances	      Network dependency
+
+- Our application should ideally:
+    1. Detect that Redis is unavailable.
+    2. Fall back to PostgreSQL.
+    3. Continue serving product requests.
+    4. Log the cache failure and measure its impact.
+- PostgreSQL may receive a sudden traffic spike when Redis fails. This is called a cache stampede / fallback load problem.
+
+
+
+
+IN OUR PROJECT:
+- we run redis image in docker container(6379 port)
+
+-  Verify Redis connectivity
+docker exec -it ecommerce-redis redis-cli
+
+- connection: redis://localhost:6379/0
+    - /0 means Redis database number 0 (Redis provides logical databases).
+
+- install dependency
+    - ```pip install redis```
+
+- One important point: We'll use redis.asyncio so our FastAPI application can communicate with Redis asynchronously without blocking the event loop.
+
+- Commands:
+    - sample, cache_key = f"product:{product_id}"
+    - Get from redis:
+        - redis.get(cache_key)
+    - Set into redis:
+        - serialized_product = ProductResponse.model_validate(
+                    product
+                ).model_dump_json()
+
+        - self.redis.setex(
+                cache_key,
+                PRODUCT_CACHE_TTL,
+                serialized_product
+            )
+    - Delete from redis(Invalidate)
+        - redis.delete(cache_key)
+
+--------------------------------------------------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------------------------------------------------
+

@@ -94,13 +94,13 @@ Repositories and services are class-based.
 
 Sample products used during Day 2 testing:
 
-| Product | Product ID | Price |
-|---|---|---:|
-| MacBook Air M3 | `11111111-1111-4111-8111-111111111111` | ₹89,999 |
-| Dell XPS 15 | `22222222-2222-4222-8222-222222222222` | ₹1,29,999 |
-| Logitech MX Master 3S | `33333333-3333-4333-8333-333333333333` | ₹8,999 |
-| Keychron K2 | `44444444-4444-4444-8444-444444444444` | ₹7,499 |
-| Samsung 990 PRO SSD | `55555555-5555-4555-8555-555555555555` | ₹16,999 |
+| Product               | Product ID                             |     Price |
+| --------------------- | -------------------------------------- | --------: |
+| MacBook Air M3        | `11111111-1111-4111-8111-111111111111` |   ₹89,999 |
+| Dell XPS 15           | `22222222-2222-4222-8222-222222222222` | ₹1,29,999 |
+| Logitech MX Master 3S | `33333333-3333-4333-8333-333333333333` |    ₹8,999 |
+| Keychron K2           | `44444444-4444-4444-8444-444444444444` |    ₹7,499 |
+| Samsung 990 PRO SSD   | `55555555-5555-4555-8555-555555555555` |   ₹16,999 |
 
 ---
 
@@ -147,10 +147,10 @@ Like Product, Inventory uses class-based repository and service layers, with sch
 
 The Order Management work uses two core models.
 
-| Model | Responsibility |
-|---|---|
-| `Order` | Represents a customer's order, references a user, and stores total amount, status, and creation time. |
-| `OrderItem` | Represents one product line in an order, including product, quantity, and unit price. |
+| Model       | Responsibility                                                                                        |
+| ----------- | ----------------------------------------------------------------------------------------------------- |
+| `Order`     | Represents a customer's order, references a user, and stores total amount, status, and creation time. |
+| `OrderItem` | Represents one product line in an order, including product, quantity, and unit price.                 |
 
 Important concepts learned:
 
@@ -208,11 +208,11 @@ The request is serialized using `json.dumps(..., sort_keys=True)`, encoded to by
 
 Rules:
 
-| Key already exists? | Request hash | Expected behaviour |
-|---|---|---|
-| No | — | Claim the key and process the order. |
-| Yes | Same | Return the previously stored response. |
-| Yes | Different | Reject with HTTP `409 Conflict`. |
+| Key already exists? | Request hash | Expected behaviour                     |
+| ------------------- | ------------ | -------------------------------------- |
+| No                  | —            | Claim the key and process the order.   |
+| Yes                 | Same         | Return the previously stored response. |
+| Yes                 | Different    | Reject with HTTP `409 Conflict`.       |
 
 A changed request must not silently reuse a key that already belongs to a different operation.
 
@@ -260,15 +260,15 @@ The `IdempotencyRecord` model was updated during Day 2.
 
 ### Final model structure discussed
 
-| Field | Purpose |
-|---|---|
-| `id` | UUID primary key. |
-| `user_id` | Non-null UUID foreign key to `users.id`. |
-| `idempotency_key` | Client-provided key. |
-| `request_hash` | SHA-256 fingerprint of normalized request content. |
-| `response_status` | Original HTTP response status. |
-| `response_body` | Original response stored as JSON. |
-| `created_at` | Record creation timestamp. |
+| Field             | Purpose                                                   |
+| ----------------- | --------------------------------------------------------- |
+| `id`              | UUID primary key.                                         |
+| `user_id`         | Non-null UUID foreign key to `users.id`.                  |
+| `idempotency_key` | Client-provided key.                                      |
+| `request_hash`    | SHA-256 fingerlogger.debug of normalized request content. |
+| `response_status` | Original HTTP response status.                            |
+| `response_body`   | Original response stored as JSON.                         |
+| `created_at`      | Record creation timestamp.                                |
 
 Changes made:
 
@@ -356,11 +356,11 @@ Locks a selected existing row until the transaction commits or rolls back, coord
 
 **SQLAlchemy result methods**
 
-| Method | Behaviour |
-|---|---|
-| `.scalar_one()` | Requires exactly one result; raises an exception for zero or multiple results. |
-| `.scalar_one_or_none()` | Returns one result or `None`. |
-| `.scalars().all()` | Returns all matching scalar results as a list. |
+| Method                  | Behaviour                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `.scalar_one()`         | Requires exactly one result; raises an exception for zero or multiple results. |
+| `.scalar_one_or_none()` | Returns one result or `None`.                                                  |
+| `.scalars().all()`      | Returns all matching scalar results as a list.                                 |
 
 ---
 
@@ -567,11 +567,11 @@ Observed:
 
 Database verification:
 
-| Check | Result |
-|---|---:|
-| Orders for test user | 1 |
-| MacBook inventory | 48 |
-| Records for `test-order-001` | 1 |
+| Check                        | Result |
+| ---------------------------- | -----: |
+| Orders for test user         |      1 |
+| MacBook inventory            |     48 |
+| Records for `test-order-001` |      1 |
 
 ### Test 3 – Same key and changed payload
 
@@ -607,11 +607,11 @@ Both requests returned:
 
 Database verification:
 
-| Check | Result |
-|---|---:|
-| Orders for test user | 2 |
-| MacBook inventory | 46 |
-| Records for `concurrent-test-001` | 1 |
+| Check                             | Result |
+| --------------------------------- | -----: |
+| Orders for test user              |      2 |
+| MacBook inventory                 |     46 |
+| Records for `concurrent-test-001` |      1 |
 
 This confirmed that the two simultaneous requests produced one order and one inventory deduction.
 
@@ -635,11 +635,11 @@ Observed response detail:
 
 Database verification:
 
-| Check | Result |
-|---|---:|
-| Orders for test user | 2 |
-| MacBook inventory | 46 |
-| Records for `rollback-test-001` | 0 |
+| Check                           | Result |
+| ------------------------------- | -----: |
+| Orders for test user            |      2 |
+| MacBook inventory               |     46 |
+| Records for `rollback-test-001` |      0 |
 
 The failed transaction left no order, no inventory deduction, and no idempotency record.
 
@@ -647,13 +647,13 @@ This demonstrated all-or-nothing transaction behaviour for the insufficient-stoc
 
 ### Test data state at the end of Day 2
 
-| Item | Final observed state |
-|---|---:|
-| Orders belonging to test user | 2 |
-| MacBook Air M3 inventory | 46 |
-| `test-order-001` idempotency records | 1 |
-| `concurrent-test-001` idempotency records | 1 |
-| `rollback-test-001` idempotency records | 0 |
+| Item                                      | Final observed state |
+| ----------------------------------------- | -------------------: |
+| Orders belonging to test user             |                    2 |
+| MacBook Air M3 inventory                  |                   46 |
+| `test-order-001` idempotency records      |                    1 |
+| `concurrent-test-001` idempotency records |                    1 |
+| `rollback-test-001` idempotency records   |                    0 |
 
 The failed changed-payload request reused `test-order-001`; it did not create another idempotency record.
 

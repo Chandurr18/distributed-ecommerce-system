@@ -22,7 +22,7 @@ async def run_outbox_worker(kafka_producer):
             published_count = await publisher.publish_pending_events()
 
             if published_count:
-                logger.info(
+                logger.debug(
                     "Published %s outbox events",
                     published_count,
                 )

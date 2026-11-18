@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI, APIRouter
 
 from src.core.kafka import create_kafka_producer
+from src.core.redis import create_redis_client, close_redis_client
 from src.api.health import router as health_router
 from src.api.products import router as products_router
 from src.api.inventory import router as inventory_router
@@ -16,24 +17,41 @@ from src.services.event_consumer_service import OrderEventConsumer
 
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.DEBUG,
+    format=(
+        "\n%(levelname)-4s - APP| "
+        "%(asctime)s | "
+        "%(name)s | "
+        "%(message)s"
+    ),
+    datefmt="%Y-%m-%d %H:%M:%S"
 )
+
+# Keep application logs at DEBUG level
+logging.getLogger("src").setLevel(logging.DEBUG)
+
+# Suppress verbose third-party DEBUG logs
+logging.getLogger("aiokafka").setLevel(logging.WARNING)
+logging.getLogger("kafka").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
     # Start Kafka producer
     producer = create_kafka_producer()
     await producer.start()
     app.state.kafka_producer = producer
-    print("Kafka producer started successfully")
+    logger.debug("Kafka producer started successfully")
 
     # Start Outbox publisher worker
     worker_task = asyncio.create_task(
         run_outbox_worker(producer)
     )
     app.state.worker_task = worker_task
-    print("Outbox worker started successfully")
+    logger.debug("Outbox worker started successfully")
 
     # Start Kafka consumer
     event_consumer = OrderEventConsumer()
@@ -44,7 +62,12 @@ async def lifespan(app: FastAPI):
     )
     app.state.event_consumer = event_consumer
     app.state.consumer_task = consumer_task
-    print("Kafka consumer started successfully")
+    logger.debug("Kafka consumer started successfully")
+
+    # Initialize Redis client
+    redis_client = create_redis_client()
+    app.state.redis = redis_client
+    logger.debug("Redis client initialized successfully")
 
     yield
 
@@ -62,7 +85,10 @@ async def lifespan(app: FastAPI):
     await event_consumer.stop()
     await producer.stop()
 
-    print("Kafka services stopped")
+    # Close Redis connections
+    close_redis_client(redis_client)
+
+    logger.debug("Kafka and Redis services stopped")
 
 
 app = FastAPI(
